@@ -34,10 +34,16 @@ class SingleStageDetector(BaseDetector):
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
         self.conv=[]
+        #resnet 50 backbone set
         self.conv1=nn.Conv2d(256,256,1)
         self.conv2 = nn.Conv2d(512, 256, 1)
         self.conv3 = nn.Conv2d(1024, 256, 1)
         self.conv4 = nn.Conv2d(2048, 256, 1)
+        #resnet 18 backbone set
+        #self.conv1 = nn.Conv2d(64,256,1)
+        #self.conv2 = nn.Conv2d(128, 256, 1)
+        #self.conv3 = nn.Conv2d(256, 256, 1)
+        #self.conv4 = nn.Conv2d(512, 256, 1)
         self.conv.append(self.conv1)
         self.conv.append(self.conv2)
         self.conv.append(self.conv3)
@@ -102,19 +108,20 @@ class SingleStageDetector(BaseDetector):
 
         sem_loss,mask_pred,semantic_feat=self.semantic_head.forward_train(sem1, gt_semantic_seg)
 #mask_transform:
-        with torch.no_grad():
-            probs = torch.sigmoid(mask_pred)
-            a = torch.where(probs > 0.5, 1.0,0.5)
-            a1 = a[:, 1:12, :, :]
-            a2 = a[:, 13:26, :, :]
-            a3 = a[:, 27:29, :, :]
-            a4 = a[:, 31:45, :, :]
-            a5 = a[:, 46:66, :, :]
-            a6 = a[:, 67:68, :, :]
-            a7 = a[:, 70:71, :, :]
-            a8 = a[:, 72:83, :, :]
-            a9 = a[:, 84:91, :, :]
-            mask = torch.cat((a1, a2, a3, a4, a5, a6, a7, a8, a9), dim=1)
+    # with torch.no_grad():
+        probs = torch.unsqueeze(mask_pred.argmax(dim=1),dim=1)
+        probs = torch.zeros(probs.size(0), 183, probs.size(2), probs.size(3)).to(probs.device).scatter_(1, probs,torch.ones_like(probs,dtype=torch.float32))
+        a = torch.where(probs ==0.0, 0.0,1.0)
+        a1 = a[:, 0:11, :, :]
+        a2 = a[:, 12:25, :, :]
+        a3 = a[:, 26:28, :, :]
+        a4 = a[:, 30:44, :, :]
+        a5 = a[:, 45:65, :, :]
+        a6 = a[:, 66:67, :, :]
+        a7 = a[:, 69:70, :, :]
+        a8 = a[:, 71:82, :, :]
+        a9 = a[:, 83:90, :, :]
+        mask = torch.cat((a1, a2, a3, a4, a5, a6, a7, a8, a9), dim=1)
         det_feature=semantic_feat+det[0]
         det_feature=(self.tran_feature(det_feature)*mask,)
         losses = self.bbox_head.forward_train(det_feature ,img_metas, gt_bboxes,
@@ -147,17 +154,18 @@ class SingleStageDetector(BaseDetector):
         mask_pred, semantic_feat = self.semantic_head.forward(sem1)
         #mask_transform:
         with torch.no_grad():
-            probs = torch.sigmoid(mask_pred)
-            a = torch.where(probs > 0.5, 1.0, 0.5)
-            a1 = a[:, 1:12, :, :]
-            a2 = a[:, 13:26, :, :]
-            a3 = a[:, 27:29, :, :]
-            a4 = a[:, 31:45, :, :]
-            a5 = a[:, 46:66, :, :]
-            a6 = a[:, 67:68, :, :]
-            a7 = a[:, 70:71, :, :]
-            a8 = a[:, 72:83, :, :]
-            a9 = a[:, 84:91, :, :]
+            probs = torch.unsqueeze(mask_pred.argmax(dim=1),dim=1)
+            prob = torch.zeros(probs.size(0), 183, probs.size(2), probs.size(3)).to(probs.device).scatter_(1, probs,torch.ones_like(probs,dtype=torch.float32))
+            a = torch.where(prob==0.0,0.0,1.0)
+            a1 = a[:, 0:11, :, :]
+            a2 = a[:, 12:25, :, :]
+            a3 = a[:, 26:28, :, :]
+            a4 = a[:, 30:44, :, :]
+            a5 = a[:, 45:65, :, :]
+            a6 = a[:, 66:67, :, :]
+            a7 = a[:, 69:70, :, :]
+            a8 = a[:, 71:82, :, :]
+            a9 = a[:, 83:90, :, :]
             mask = torch.cat((a1, a2, a3, a4, a5, a6, a7, a8, a9), dim=1)
         det=semantic_feat+feat[0]
         det_feature=(self.tran_feature(det)*mask,)
@@ -191,9 +199,32 @@ class SingleStageDetector(BaseDetector):
             f'{self.bbox_head.__class__.__name__}' \
             ' does not support test-time augmentation'
 
-        feats = self.extract_feats(imgs)
+        sem,eats = self.extract_feats(imgs)
+        sem_input = []
+        for i, sem_featue in enumerate(sem):
+            sem_input.append(self.conv[i](sem_featue))
+        sem1 = tuple(sem_input)
+
+        mask_pred, semantic_feat = self.semantic_head.forward(sem1)
+        #mask_transform:
+        with torch.no_grad():
+            probs = torch.unsqueeze(mask_pred.argmax(dim=1),dim=1)
+            prob = torch.zeros(probs.size(0), 183, probs.size(2), probs.size(3)).to(probs.device).scatter_(1, probs,torch.ones_like(probs,dtype=torch.float32))
+            a = torch.where(prob==0.0,0.0, 1.0)
+            a1 = a[:, 0:11, :, :]
+            a2 = a[:, 12:25, :, :]
+            a3 = a[:, 26:28, :, :]
+            a4 = a[:, 30:44, :, :]
+            a5 = a[:, 45:65, :, :]
+            a6 = a[:, 66:67, :, :]
+            a7 = a[:, 69:70, :, :]
+            a8 = a[:, 71:82, :, :]
+            a9 = a[:, 83:90, :, :]
+            mask = torch.cat((a1, a2, a3, a4, a5, a6, a7, a8, a9), dim=1)
+        det=semantic_feat+eats[0]
+        det_feature=(self.tran_feature(det)*mask,)
         results_list = self.bbox_head.aug_test(
-            feats, img_metas, rescale=rescale)
+            det_feature, img_metas, rescale=rescale)
         bbox_results = [
             bbox2result(det_bboxes, det_labels, self.bbox_head.num_classes)
             for det_bboxes, det_labels in results_list

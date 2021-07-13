@@ -5,13 +5,12 @@ _base_ = [
 
 model = dict(
     type='CenterNet',
-    pretrained='torchvision://resnet18',
     backbone=dict(
         type='ResNet',
         depth=18,
         norm_eval=False,
         norm_cfg=dict(type='BN'),
-        pretrained='torchvision://resnet18'),
+        init_cfg=dict(type='Pretrained',checkpoint='torchvision://resnet18')),
     neck=dict(
         type='CTResNetNeck',
         in_channel=512,
@@ -46,6 +45,20 @@ img_norm_cfg = dict(
 train_pipeline = [
     dict(type='LoadImageFromFile', to_float32=True, color_type='color'),
     dict(type='LoadAnnotations', with_bbox=True,with_seg=True),
+    dict(
+        type='PhotoMetricDistortion',
+        brightness_delta=32,
+        contrast_range=(0.5, 1.5),
+        saturation_range=(0.5, 1.5),
+        hue_delta=18),
+    #dict(
+    #    type='RandomCenterCropPad',
+    #    crop_size=(512, 512),
+    #    ratios=(0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3),
+    #    mean=[0, 0, 0],
+    #    std=[1, 1, 1],
+    #    to_rgb=True,
+    #    test_pad_mode=None),
     dict(type='Resize', img_scale=(512, 512), keep_ratio=False),
     dict(type='RandomFlip', flip_ratio=0.5),
     dict(type='Normalize', **img_norm_cfg),
@@ -84,28 +97,11 @@ test_pipeline = [
                 keys=['img'])
         ])
 ]
-#test_pipeline = [
-#    dict(type='LoadImageFromFile', to_float32=True),
-#    dict(
-#        type='MultiScaleFlipAug',
-#        scale_factor=1.0,
-#        flip=False,
-#        transforms=[
-#            dict(type='Resize', keep_ratio=True),
-#            dict(type='RandomFlip'),
-#            dict(type='Normalize', **img_norm_cfg),
-#            dict(type='DefaultFormatBundle'),
-#            dict(
-#                type='Collect',
-#                meta_keys=('filename', 'ori_shape', 'img_shape', 'pad_shape',
-#                           'scale_factor', 'flip', 'flip_direction',
-#                           'img_norm_cfg', 'border'),
-#                keys=['img'])
-#        ])
-#]
+
+
 data_root='../data/coco/'
 data = dict(
-    samples_per_gpu=16,
+    samples_per_gpu=1,
     workers_per_gpu=4,
     train=dict(
         seg_prefix=data_root + 'stuffthingmaps/train2017/',
@@ -118,7 +114,7 @@ data = dict(
 # than the Adam in the source code, so we use SGD default settings and
 # if you use adam+lr5e-4, the map is 29.1.
 
-optimizer = dict(type='SGD', lr=0.01, momentum=0.9, weight_decay=0.0001)
+optimizer = dict(type='SGD', lr=0.005, momentum=0.9, weight_decay=0.0001)
 optimizer_config = dict(
     _delete_=True, grad_clip=dict(max_norm=35, norm_type=2))
 
@@ -129,9 +125,9 @@ lr_config = dict(
     warmup='linear',
     warmup_iters=1000,
     warmup_ratio=1.0 / 1000,
-    step=[90, 120])
-runner = dict(max_epochs=140)
-
+    step=[60, 80])
+runner = dict(max_epochs=100)
 # Avoid evaluation and saving weights too frequently
-evaluation = dict(interval=2, metric='bbox')
-checkpoint_config = dict(interval=2)
+evaluation = dict(interval=1, metric='bbox')
+checkpoint_config = dict(interval=1)
+load_from='./work_dirs/aug_sem_centernet_resnet50_140e_coco_v4/epoch_54.pth'
