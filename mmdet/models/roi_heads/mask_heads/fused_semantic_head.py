@@ -95,16 +95,16 @@ class FusedSemanticHead(BaseModule):
             x = self.convs[i](x)
 
         mask_pred = self.conv_logits(x)
-        x = self.conv_embedding(x)
-        return mask_pred, x
+        #x = self.conv_embedding(x)
+        return mask_pred
     def forward_train(self,
                       x,
                       gt_semantic_seg):
         losses=dict()
-        mask_pred,semantic_feat=self(x)
+        mask_pred=self(x)
         loss_seg=self.loss(mask_pred,gt_semantic_seg)
         losses['loss_semantic_seg']=loss_seg
-        return losses, mask_pred, semantic_feat
+        return losses, mask_pred
     @force_fp32(apply_to=('mask_pred', ))
     def loss(self, mask_pred, labels):
         labels = labels.squeeze(1).long()

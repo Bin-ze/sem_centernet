@@ -35,27 +35,26 @@ class SingleStageDetector(BaseDetector):
         self.test_cfg = test_cfg
         self.conv=[]
         #resnet 50 backbone set
-        self.conv1=nn.Conv2d(256,256,1)
-        self.conv2 = nn.Conv2d(512, 256, 1)
-        self.conv3 = nn.Conv2d(1024, 256, 1)
-        self.conv4 = nn.Conv2d(2048, 256, 1)
+        #self.conv1=nn.Conv2d(256,256,1)
+        #self.conv2 = nn.Conv2d(512, 256, 1)
+        #self.conv3 = nn.Conv2d(1024, 256, 1)
+        #self.conv4 = nn.Conv2d(2048, 256, 1)
         #resnet 18 backbone set
-        #self.conv1 = nn.Conv2d(64,256,1)
-        #self.conv2 = nn.Conv2d(128, 256, 1)
-        #self.conv3 = nn.Conv2d(256, 256, 1)
-        #self.conv4 = nn.Conv2d(512, 256, 1)
+        self.conv1 = nn.Conv2d(64,256,1)
+        self.conv2 = nn.Conv2d(128, 256, 1)
+        self.conv3 = nn.Conv2d(256, 256, 1)
+        self.conv4 = nn.Conv2d(512, 256, 1)
         self.conv.append(self.conv1)
         self.conv.append(self.conv2)
         self.conv.append(self.conv3)
         self.conv.append(self.conv4)
-        self.tran_feature = self._build_trans(64,64,80)
+        self.tran_feature = self._build_trans(64,80)
 
-    def _build_trans(self, in_channel, feat_channel, out_channel):
+    def _build_trans(self, in_channel, out_channel):
         """Build head for each branch."""
         layer = nn.Sequential(
-            nn.Conv2d(in_channel, feat_channel, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(feat_channel, out_channel, kernel_size=1))
+            nn.Conv2d(in_channel, out_channel, kernel_size=1)
+        )
         return layer
     def extract_feat(self, img):
         """Directly extract features from the backbone+neck."""
@@ -106,23 +105,37 @@ class SingleStageDetector(BaseDetector):
             sem_input.append(self.conv[i](sem_featue))
         sem1=tuple(sem_input)
 
-        sem_loss,mask_pred,semantic_feat=self.semantic_head.forward_train(sem1, gt_semantic_seg)
+        sem_loss,mask_pred=self.semantic_head.forward_train(sem1, gt_semantic_seg)
 #mask_transform:
-    # with torch.no_grad():
-        probs = torch.unsqueeze(mask_pred.argmax(dim=1),dim=1)
-        probs = torch.zeros(probs.size(0), 183, probs.size(2), probs.size(3)).to(probs.device).scatter_(1, probs,torch.ones_like(probs,dtype=torch.float32))
-        a = torch.where(probs ==0.0, 0.0,1.0)
-        a1 = a[:, 0:11, :, :]
-        a2 = a[:, 12:25, :, :]
-        a3 = a[:, 26:28, :, :]
-        a4 = a[:, 30:44, :, :]
-        a5 = a[:, 45:65, :, :]
-        a6 = a[:, 66:67, :, :]
-        a7 = a[:, 69:70, :, :]
-        a8 = a[:, 71:82, :, :]
-        a9 = a[:, 83:90, :, :]
-        mask = torch.cat((a1, a2, a3, a4, a5, a6, a7, a8, a9), dim=1)
-        det_feature=semantic_feat+det[0]
+        with torch.no_grad():
+            probs = torch.unsqueeze(mask_pred.argmax(dim=1),dim=1)
+        #probs = torch.zeros(probs.size(0), 183, probs.size(2), probs.size(3)).to(probs.device).scatter_(1, probs,torch.ones_like(probs,dtype=torch.float32))
+        #a = torch.where(probs ==0.0,1.0,0.8)
+        #a1 = a[:, 0:11, :, :]
+        #a2 = a[:, 12:25, :, :]
+        #a3 = a[:, 26:28, :, :]
+        #a4 = a[:, 30:44, :, :]
+        #a5 = a[:, 45:65, :, :]
+        #a6 = a[:, 66:67, :, :]
+        #a7 = a[:, 69:70, :, :]
+        #a8 = a[:, 71:82, :, :]
+        #a9 = a[:, 83:90, :, :]
+        #mask = torch.cat((a1, a2, a3, a4, a5, a6, a7, a8, a9), dim=1)
+            a = torch.where(probs > 90, 91, probs)
+            a = torch.where(a == 11, 91, a)
+            a = torch.where(a == 25, 91, a)
+            a = torch.where(a == 28, 91, a)
+            a = torch.where(a == 29, 91, a)
+            a = torch.where(a == 44, 91, a)
+            a = torch.where(a == 65, 91, a)
+            a = torch.where(a == 67, 91, a)
+            a = torch.where(a == 68, 91, a)
+            a = torch.where(a == 70, 91, a)
+            a = torch.where(a == 82, 91, a)
+            a=torch.where(a==0,1,a)
+            mask = torch.where(a > 90, 0, 1)
+
+        det_feature=det[0]
         det_feature=(self.tran_feature(det_feature)*mask,)
         losses = self.bbox_head.forward_train(det_feature ,img_metas, gt_bboxes,
                                               gt_labels, gt_bboxes_ignore)
@@ -151,23 +164,37 @@ class SingleStageDetector(BaseDetector):
             sem_input.append(self.conv[i](sem_featue))
         sem1 = tuple(sem_input)
 
-        mask_pred, semantic_feat = self.semantic_head.forward(sem1)
+        mask_pred = self.semantic_head.forward(sem1)
         #mask_transform:
         with torch.no_grad():
             probs = torch.unsqueeze(mask_pred.argmax(dim=1),dim=1)
-            prob = torch.zeros(probs.size(0), 183, probs.size(2), probs.size(3)).to(probs.device).scatter_(1, probs,torch.ones_like(probs,dtype=torch.float32))
-            a = torch.where(prob==0.0,0.0,1.0)
-            a1 = a[:, 0:11, :, :]
-            a2 = a[:, 12:25, :, :]
-            a3 = a[:, 26:28, :, :]
-            a4 = a[:, 30:44, :, :]
-            a5 = a[:, 45:65, :, :]
-            a6 = a[:, 66:67, :, :]
-            a7 = a[:, 69:70, :, :]
-            a8 = a[:, 71:82, :, :]
-            a9 = a[:, 83:90, :, :]
-            mask = torch.cat((a1, a2, a3, a4, a5, a6, a7, a8, a9), dim=1)
-        det=semantic_feat+feat[0]
+#            prob = torch.zeros(probs.size(0), 183, probs.size(2), probs.size(3)).to(probs.device).scatter_(1, probs,torch.ones_like(probs,dtype=torch.float32))
+#            a = torch.where(prob==0.0,1.0,1.0)
+#            a1 = a[:, 0:11, :, :]
+#            a2 = a[:, 12:25, :, :]
+#            a3 = a[:, 26:28, :, :]
+#            a4 = a[:, 30:44, :, :]
+#            a5 = a[:, 45:65, :, :]
+#            a6 = a[:, 66:67, :, :]
+#            a7 = a[:, 69:70, :, :]
+#            a8 = a[:, 71:82, :, :]
+#            a9 = a[:, 83:90, :, :]
+#            mask = torch.cat((a1, a2, a3, a4, a5, a6, a7, a8, a9), dim=1)
+            a = torch.where(probs > 90, 91, probs)
+            a = torch.where(a == 11, 91, a)
+            a = torch.where(a == 25, 91, a)
+            a = torch.where(a == 28, 91, a)
+            a = torch.where(a == 29, 91, a)
+            a = torch.where(a == 44, 91, a)
+            a = torch.where(a == 65, 91, a)
+            a = torch.where(a == 67, 91, a)
+            a = torch.where(a == 68, 91, a)
+            a = torch.where(a == 70, 91, a)
+            a = torch.where(a == 82, 91, a)
+            a=torch.where(a==0,1,a)
+            mask=torch.where(a>90,0,1)
+
+        det=feat[0]
         det_feature=(self.tran_feature(det)*mask,)
         results_list = self.bbox_head.simple_test(
             det_feature, img_metas, rescale=rescale)
@@ -205,23 +232,37 @@ class SingleStageDetector(BaseDetector):
             sem_input.append(self.conv[i](sem_featue))
         sem1 = tuple(sem_input)
 
-        mask_pred, semantic_feat = self.semantic_head.forward(sem1)
+        mask_pred = self.semantic_head.forward(sem1)
         #mask_transform:
         with torch.no_grad():
             probs = torch.unsqueeze(mask_pred.argmax(dim=1),dim=1)
-            prob = torch.zeros(probs.size(0), 183, probs.size(2), probs.size(3)).to(probs.device).scatter_(1, probs,torch.ones_like(probs,dtype=torch.float32))
-            a = torch.where(prob==0.0,0.0, 1.0)
-            a1 = a[:, 0:11, :, :]
-            a2 = a[:, 12:25, :, :]
-            a3 = a[:, 26:28, :, :]
-            a4 = a[:, 30:44, :, :]
-            a5 = a[:, 45:65, :, :]
-            a6 = a[:, 66:67, :, :]
-            a7 = a[:, 69:70, :, :]
-            a8 = a[:, 71:82, :, :]
-            a9 = a[:, 83:90, :, :]
-            mask = torch.cat((a1, a2, a3, a4, a5, a6, a7, a8, a9), dim=1)
-        det=semantic_feat+eats[0]
+           # prob = torch.zeros(probs.size(0), 183, probs.size(2), probs.size(3)).to(probs.device).scatter_(1, probs,torch.ones_like(probs,dtype=torch.float32))
+           # #a = torch.where(prob==0.0,1.0, 1.0)
+           # a=prob
+           # a1 = a[:, 0:11, :, :]
+           # a2 = a[:, 12:25, :, :]
+           # a3 = a[:, 26:28, :, :]
+           # a4 = a[:, 30:44, :, :]
+           # a5 = a[:, 45:65, :, :]
+           # a6 = a[:, 66:67, :, :]
+           # a7 = a[:, 69:70, :, :]
+           # a8 = a[:, 71:82, :, :]
+           # a9 = a[:, 83:90, :, :]
+           # mask = torch.cat((a1, a2, a3, a4, a5, a6, a7, a8, a9), dim=1)
+            a = torch.where(probs > 90, 91, probs)
+            a = torch.where(a == 11, 91, a)
+            a = torch.where(a == 25, 91, a)
+            a = torch.where(a == 28, 91, a)
+            a = torch.where(a == 29, 91, a)
+            a = torch.where(a == 44, 91, a)
+            a = torch.where(a == 65, 91, a)
+            a = torch.where(a == 67, 91, a)
+            a = torch.where(a == 68, 91, a)
+            a = torch.where(a == 70, 91, a)
+            a = torch.where(a == 82, 91, a)
+            a = torch.where(a == 0, 1, a)
+            mask = torch.where(a > 90, 0, 1)
+        det=eats[0]
         det_feature=(self.tran_feature(det)*mask,)
         results_list = self.bbox_head.aug_test(
             det_feature, img_metas, rescale=rescale)
